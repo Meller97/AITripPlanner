@@ -85,7 +85,7 @@ def get_possible_destinations(trip_type, month):
     
     return destinations_dict
 
-def search_flights(destination, start_date, end_date):
+def search_flights(destination, origin, start_date, end_date):
     params = {
   "engine": "google_flights",
   "departure_id": "TLV",
@@ -109,6 +109,12 @@ def search_flights(destination, start_date, end_date):
         print(f"An error occurred: {e}")
         return None
 
+def find_flights_two_directions(destination, start_date, end_date):
+    departure = search_flights(destination, "TLV", start_date, end_date)
+    back = search_flights("TLV", destination, start_date, end_date)
+
+    return departure, back
+
 def get_cheapest_flight(flights_data):
     best_flights = flights_data.get("best_flights", [])
     other_flights = flights_data.get("other_flights", [])
@@ -129,33 +135,69 @@ def print_ceapests_flight(flight):
     print(f"Title: {flight['title']}")
 
 # Function to fetch hotels for a given destination
-def fetch_hotels(destination, checkin_date, checkout_date):
+def fetch_hotels(destination, check_in_date, check_out_date):
     params = {
         "engine": "google_hotels",
         "q": f"hotels in {destination}",
-        "check_in": checkin_date,
-        "check_out": checkout_date,
+        "check_in_date": check_in_date,
+        "check_out_date": check_out_date,
         "location": destination,
-        "api_key": "YOUR_SERPAPI_KEY"
+        "api_key": serpapi_api_key
     }
 
     search = GoogleSearch(params)
     results = search.get_dict()
 
+    if "error" in results:
+        print(f"Error fetching hotels: {results['error']}")
+        return []
+    
     # Extract hotel information from the results
     hotels = []
-    for hotel in results.get("hotel_results", []):
+    for hotel in results.get("properties", []):
         hotels.append({
-            "name": hotel.get("title"),
-            "address": hotel.get("address"),
-            "rating": hotel.get("rating"),
-            "price": hotel.get("price")
+            "name": hotel.get("name"),
+            "description": hotel.get("description"),
+            "address": hotel.get("gps_coordinates"),
+            "rating": hotel.get("overall_rating"),
+            "price": hotel.get("total_rate", {}).get("extracted_lowest"),
+            "check_in_time": hotel.get("check_in_time"),
+            "check_out_time": hotel.get("check_out_time"),
+            "amenities": hotel.get("amenities"),
+            "link": hotel.get("serpapi_property_details_link"),
         })
-    
     return hotels
 
+def find_best_hotel(destination, check_in_date, check_out_date, left_budget):
+    hotels = fetch_hotels(destination, check_in_date, check_out_date)
+    if hotel == None:
+        return "no hotel found"
+    return max((hotel for hotel in hotels if hotel["price"] < left_budget), key=lambda x: x["price"], default=None)
+
+#display destinations and let user choose
+def display_and_choose_destinations(destinations):
+    # Display the 5 options
+    print("destinations:")
+    for i, (destination, info) in enumerate(destinations.items(), 1):
+        print(f"{i}. {destination}:")
+        for key, value in info.items():
+            print(f"   {key}: {value}")
+        print()
+
+    # Get user choice
+    choice = int(input("Choose a destination by entering the number: ")) - 1
+    if 0 <= choice < len(destinations):
+        chosen_destination = list(destinations.items())[choice][0]
+        return chosen_destination, destinations[chosen_destination]
+    else:
+        print("Invalid choice.")
+        return None
+
+
+
 def print_for_each_flight():
-    dest_flight_dict = {}
+    #dict to hokd all the details for every destenation
+    destinations_info = {}
     #get user input
     start_date, end_date, budget, trip_type = get_user_input()
     month = get_month_from_date(start_date)
@@ -165,18 +207,32 @@ def print_for_each_flight():
     #iterate over each destenation and get the cheapest flight
     for dest in destination_airport_dict:
         if destination_airport_dict[dest] != "City not found":
-            flight_data = search_flights(destination_airport_dict[dest],start_date, end_date)
-            cheapest = get_cheapest_flight(flight_data)
-            if cheapest["price"]<= budget:
-                cheapest["left_budget"] = budget - cheapest["price"]
-                dest_flight_dict[dest] = cheapest
-            print(cheapest)
+            departures_flight_data = search_flights(destination_airport_dict[dest],start_date, end_date)
+            arrival_flight_data = search_flights(destination_airport_dict[dest],start_date, end_date)
+            cheapest_departure = get_cheapest_flight(departures_flight_data)
+            cheapest_arrival = get_cheapest_flight(arrival_flight_data)
+            flights_coast = cheapest_arrival["price"] + cheapest_departure["price"]
+            if flights_coast >= budget:
+                return "Not enough mony for this trip"
+            best_hotel = find_best_hotel(dest, start_date, end_date, budget - flights_coast)
+            if best_hotel == "no hotel found":
+                return "no hotel found"
+            elif best_hotel == None:
+                return "not enough budget"
+            destinations_info[dest] = {
+                "departures flight" : departures_flight_data,
+                "arrival flight" : arrival_flight_data,
+                "flights coast" : flights_coast,
+                "hotel" : best_hotel,
+                "hotel coast" : best_hotel["price"],
+                "total coast" : flights_coast +best_hotel["price"]
+            }
         else:
             print("not good")
-    #for dest in destination_airport_dict:
+    
 
 if __name__ == "__main__":
-    result = print_for_each_flight()
+    #result = print_for_each_flight()
     #result = search_flights("d", "2024-07-21", "2024-07-27")
     # Ensure the file path is in the current directory
     
@@ -187,3 +243,9 @@ if __name__ == "__main__":
     #with open(file_path, 'w') as file:
     #    json.dump(result, file, indent=4)
     #print(df.columns)
+
+    hotels = fetch_hotels("New York", "2024-07-21", "2024-07-27")
+    print("Hotels in Ney York:")
+    for hotel in hotels:
+        print(json.dumps(hotel, indent=2))
+    print("\n")
