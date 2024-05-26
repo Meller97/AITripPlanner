@@ -10,6 +10,15 @@ import os
 # Load the CSV file
 df = pd.read_csv('airports-code@public.csv', on_bad_lines='skip', delimiter=';',usecols=["Airport Code", "Airport Name", "City Name"])
 
+#file in json format
+json_file_path = 'airports-code@public.json'
+
+#openAPI client
+CLIENT = openai.OpenAI(
+        api_key="sk-proj-31rvOvyTM13BSWMXnqMhT3BlbkFJ0fIRnpFuUIVvGLSVm6sH"
+    )
+
+#serpapi API key
 serpapi_api_key = "4855a30cc64d8fac37a10cb9c506083dfc5c07d4b4e62f4af01158fe61336ac9"
 
 def read_csv_and_select_columns():
@@ -37,16 +46,16 @@ def get_airport_code_by_city(airport_name):
     else:
         return "City not found"
 
-def get_promt(prompt):
-    client = openai.OpenAI(
-        api_key="sk-proj-31rvOvyTM13BSWMXnqMhT3BlbkFJ0fIRnpFuUIVvGLSVm6sH"
-    )
+def upload_file_to_open_ai(file_path: str) -> str:
+    response = CLIENT.files.create(file=open(file_path, 'rb'), purpose='assistants')
+    return response.id
 
+def get_promt(prompt, role):
     try:
-        completion = client.chat.completions.create(
+        completion = CLIENT.chat.completions.create(
             model="gpt-4o",
             messages=[
-                {"role": "system", "content": "You are an experienced worldwide vacation planner. Additionally you are familiar with airports around the world."},
+                {"role": "system", "content": role},
                 {"role": "user", "content": prompt}
             ]
         )
@@ -57,39 +66,46 @@ def get_promt(prompt):
         print(f"An error occurred: {e}")
         return None
 
-def get_promt_fake(promt):
-    return "Maldives, Male\nBora Bora, Tahiti\nSeychelles, Mahe\nPhuket, Phuket\nMaui, Maui"
+def get_possible_destinations_fake(trip_type, month):
+    response =  "New York, John F Kennedy Intl, JFK\nNegril, Negril, NEG\nPatong Beach, Patong Beach, PBS\nPompano Beach, Pompano Beach, PPM\nMyrtle Beach, Myrtle Beach Afb, MYR"
+    destinations_dict = {}
+    for line in response.split('\n'):
+        travel_destination, closest_airport_name, closest_airport_code = line.split(', ')
+        destinations_dict[travel_destination] = closest_airport_code
+    
+    return destinations_dict
 
-    return completion.choices[0].message['content']
 
 def get_possible_destinations(trip_type, month):
     selected_lines = read_csv_and_select_columns()
+    file_id = upload_file_to_open_ai(json_file_path)
     prompt = (
-    f"The following is a list of places and their corresponding airports from the CSV file:\n\n{selected_lines}\n\n"
-        "Based on this information, suggest 5 possible travel destinations in the world for a "
-        f"{trip_type} trip in {month}. For each destination, you have to return the response in the following structure "
-        "(all the letters have to be English letters without any special characters):\n"
-        "<possible travel destination>,<closest airport name>\n"
-        "<possible travel destination>,<closest airport name>\n"
-        "<possible travel destination>,<closest airport name>\n"
-        "<possible travel destination>,<closest airport name>\n"
-        "<possible travel destination>,<closest airport name>"
+    f"The file {file_id} is a jason file containing places in the world and their corresponding airports and another filed abut the airport"
+        "Suggest 5 possible travel destinations in the world for a "
+        f"{trip_type} trip in {month}. For each destination, i want you to give me the closest airport name and code that is on the file {file_id}(names and code are in the file), you have to return the response in the following structure:"
+        "<possible travel destination>,<closest airport name>,<closest airport code>\n"
+        "<possible travel destination>,<closest airport name>,<closest airport code>\n"
+        "<possible travel destination>,<closest airport name>,<closest airport code>\n"
+        "<possible travel destination>,<closest airport name>,<closest airport code>\n"
+        "<possible travel destination>,<closest airport name>,<closest airport code>\n"
+        "example for one line: Tel Aviv,Ben Gurion Intl,TLV"
 )
-    response = get_promt(prompt)
+    role = "You are an experienced worldwide vacation planner. Additionally you are familiar with airports around the world."
+    response = get_promt(prompt, role)
     
     # Split the response into lines and create a dictionary
     destinations_dict = {}
     for line in response.split('\n'):
-        travel_destination, closest_airport = line.split(', ')
-        destinations_dict[travel_destination] = get_airport_code_by_city(closest_airport)
+        travel_destination, closest_airport_name, closest_airport_code = line.split(', ')
+        destinations_dict[travel_destination] = closest_airport_code
     
     return destinations_dict
 
 def search_flights(destination, origin, start_date, end_date):
     params = {
   "engine": "google_flights",
-  "departure_id": "TLV",
-  "arrival_id": "AUS",
+  "departure_id": origin,
+  "arrival_id": destination,
   "outbound_date": start_date,
   "return_date": end_date,
   "currency": "USD",
@@ -155,12 +171,15 @@ def fetch_hotels(destination, check_in_date, check_out_date):
     # Extract hotel information from the results
     hotels = []
     for hotel in results.get("properties", []):
+        price = hotel.get("total_rate", {}).get("extracted_lowest")
+        if price == None:
+            continue
         hotels.append({
             "name": hotel.get("name"),
             "description": hotel.get("description"),
             "address": hotel.get("gps_coordinates"),
             "rating": hotel.get("overall_rating"),
-            "price": hotel.get("total_rate", {}).get("extracted_lowest"),
+            "price": price,
             "check_in_time": hotel.get("check_in_time"),
             "check_out_time": hotel.get("check_out_time"),
             "amenities": hotel.get("amenities"),
@@ -170,7 +189,7 @@ def fetch_hotels(destination, check_in_date, check_out_date):
 
 def find_best_hotel(destination, check_in_date, check_out_date, left_budget):
     hotels = fetch_hotels(destination, check_in_date, check_out_date)
-    if hotel == None:
+    if hotels == None:
         return "no hotel found"
     return max((hotel for hotel in hotels if hotel["price"] < left_budget), key=lambda x: x["price"], default=None)
 
@@ -193,7 +212,93 @@ def display_and_choose_destinations(destinations):
         print("Invalid choice.")
         return None
 
+def generate_daily_plan(destination, start_date_str, end_date_str):
+    # Parse the dates
+    start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
+    end_date = datetime.strptime(end_date_str, "%Y-%m-%d")
+    
+    # Calculate the number of days for the trip
+    num_days = (end_date - start_date).days + 1
 
+    # Create a prompt for the OpenAI API to generate a daily plan for the entire trip
+    prompt = f"""Create a detailed daily plan for a trip to {destination} from {start_date_str} to {end_date_str}.
+      Include activities, sightseeing spots, and meal recommendations for each day, considering the typical weather and season for that month.
+      your answer must start with the daily plan without intro
+      and the structur have to be as follow:
+      Day 1:
+      <list of day 1 activities here>
+      
+      Day 2:
+      <list of day 1 activities here>
+      .
+      .
+      .
+      Day N:
+      <list of day N activities here>
+
+      summery list of 4 best activity of the trip:
+      <activity>
+      <activity>
+      <activity>
+      <activity>
+      """
+    role = "You are an experienced worldwide vacation planner. Knows every attraction in every city around the world."
+    # Call the OpenAI API to get the plan for the entire trip
+    return get_promt(prompt, role)
+
+def extract_best_activities(plan_string):
+    # Split the plan string into lines
+    lines = plan_string.split('\n')
+    
+    # Find the start of the summary list
+    start_index = None
+    for i, line in enumerate(lines):
+        if "summary list of 4 best activities of the trip:" in line.lower():
+            start_index = i + 1
+            break
+    
+    # If start index is found, extract the next 4 lines
+    if start_index is not None:
+        best_activities = []
+        for j in range(start_index, len(lines)):
+            line = lines[j].strip()
+            if line:
+                best_activities.append(line)
+            if len(best_activities) == 4:
+                break
+        return best_activities
+    else:
+        return []
+
+#creates 4 different images that will show the user how his trip will look like
+def create_trip_images(plan_prompt):
+    
+    # Create a detailed prompt for DALL-E using the daily plan
+    dalle_prompt = f"""Create image that visualize the following trip activity: 
+    {plan_prompt}.
+    make it look realistic, i want to feel like i am there when u see the image"""
+    
+    try:
+        # Call the OpenAI DALL-E API to generate images (assuming older version endpoint)
+        response = CLIENT.images.generate(
+            model="dall-e-3",
+            prompt=dalle_prompt,
+            quality="standard",
+            n=1,
+            size="1024x1024"
+        )
+
+        images = []
+        for i, image in enumerate(response.data):
+            url = image.url
+            if url:
+                 images.append(url)
+            else:
+                images.append('')
+        return images
+    
+    except Exception as e:
+        print(f"An error occurred while generating images: {e}")
 
 def print_for_each_flight():
     #dict to hokd all the details for every destenation
@@ -203,22 +308,33 @@ def print_for_each_flight():
     month = get_month_from_date(start_date)
     
     #return dictonary contain for each contry the airport code
-    destination_airport_dict = get_possible_destinations(trip_type, month)
+    destination_airport_dict = get_possible_destinations_fake(trip_type, month)
     #iterate over each destenation and get the cheapest flight
     for dest in destination_airport_dict:
         if destination_airport_dict[dest] != "City not found":
-            departures_flight_data = search_flights(destination_airport_dict[dest],start_date, end_date)
-            arrival_flight_data = search_flights(destination_airport_dict[dest],start_date, end_date)
+            departures_flight_data, arrival_flight_data = find_flights_two_directions(destination_airport_dict[dest],start_date, end_date)
+            if departures_flight_data == None or arrival_flight_data == None:
+                print("no flight for this")
+                continue
+            if "error" in departures_flight_data:
+                print(f"Error fetching hotels: {departures_flight_data['error']}")
+                continue
+            if "error" in arrival_flight_data:
+                print(f"Error fetching hotels: {arrival_flight_data['error']}")
+                continue
             cheapest_departure = get_cheapest_flight(departures_flight_data)
             cheapest_arrival = get_cheapest_flight(arrival_flight_data)
             flights_coast = cheapest_arrival["price"] + cheapest_departure["price"]
             if flights_coast >= budget:
-                return "Not enough mony for this trip"
+                print("Not enough mony for this trip")
+                continue
             best_hotel = find_best_hotel(dest, start_date, end_date, budget - flights_coast)
             if best_hotel == "no hotel found":
-                return "no hotel found"
+                print("no hotel found")
+                continue
             elif best_hotel == None:
-                return "not enough budget"
+                print("not enough budget")
+                continue
             destinations_info[dest] = {
                 "departures flight" : departures_flight_data,
                 "arrival flight" : arrival_flight_data,
@@ -230,9 +346,17 @@ def print_for_each_flight():
         else:
             print("not good")
     
+    chosen_destination, chosen_destination_info = display_and_choose_destinations(destinations_info)
+    daily_plan = generate_daily_plan(chosen_destination, start_date, end_date)
+    best_activities = extract_best_activities(daily_plan)
+    images = []
+    for activity in best_activities:
+        images.append(create_trip_images(activity))
+    print(images)
+    
 
 if __name__ == "__main__":
-    #result = print_for_each_flight()
+    result = print_for_each_flight()
     #result = search_flights("d", "2024-07-21", "2024-07-27")
     # Ensure the file path is in the current directory
     
@@ -244,8 +368,8 @@ if __name__ == "__main__":
     #    json.dump(result, file, indent=4)
     #print(df.columns)
 
-    hotels = fetch_hotels("New York", "2024-07-21", "2024-07-27")
-    print("Hotels in Ney York:")
-    for hotel in hotels:
-        print(json.dumps(hotel, indent=2))
-    print("\n")
+    #hotels = fetch_hotels("New York", "2024-07-21", "2024-07-27")
+    #print("Hotels in Ney York:")
+    #for hotel in hotels:
+    #    print(json.dumps(hotel, indent=2))
+    #print("\n")
