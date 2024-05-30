@@ -2,6 +2,8 @@ import openai
 import pandas as pd
 from datetime import datetime
 from serpapi.google_search import GoogleSearch
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 import re
 import json
 import os
@@ -212,7 +214,7 @@ def display_and_choose_destinations(destinations):
         print("Invalid choice.")
         return None
 
-def generate_daily_plan(destination, start_date_str, end_date_str):
+def generate_daily_plan(destination, trip_type, start_date_str, end_date_str):
     # Parse the dates
     start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
     end_date = datetime.strptime(end_date_str, "%Y-%m-%d")
@@ -221,7 +223,7 @@ def generate_daily_plan(destination, start_date_str, end_date_str):
     num_days = (end_date - start_date).days + 1
 
     # Create a prompt for the OpenAI API to generate a daily plan for the entire trip
-    prompt = f"""Create a detailed daily plan for a trip to {destination} from {start_date_str} to {end_date_str}.
+    prompt = f"""Create a detailed daily plan for a{trip_type} trip to {destination} from {start_date_str} to {end_date_str}.
       Include activities, sightseeing spots, and meal recommendations for each day, considering the typical weather and season for that month.
       your answer must start with the daily plan without intro
       and the structur have to be as follow:
@@ -300,13 +302,11 @@ def create_trip_images(plan_prompt):
     except Exception as e:
         print(f"An error occurred while generating images: {e}")
 
-def print_for_each_flight():
+def get_destinations_info(start_date: str, end_date: str, budget: int, trip_type: str):
     #dict to hokd all the details for every destenation
     destinations_info = {}
     #get user input
-    start_date, end_date, budget, trip_type = get_user_input()
     month = get_month_from_date(start_date)
-    
     #return dictonary contain for each contry the airport code
     destination_airport_dict = get_possible_destinations_fake(trip_type, month)
     #iterate over each destenation and get the cheapest flight
@@ -346,17 +346,49 @@ def print_for_each_flight():
         else:
             print("not good")
     
-    chosen_destination, chosen_destination_info = display_and_choose_destinations(destinations_info)
-    daily_plan = generate_daily_plan(chosen_destination, start_date, end_date)
+    return destinations_info
+    #chosen_destination, chosen_destination_info = display_and_choose_destinations(destinations_info)
+
+def get_plan_and_images(destination, trip_type, start_date, end_date):
+    daily_plan = generate_daily_plan(destination, trip_type, start_date, end_date)
     best_activities = extract_best_activities(daily_plan)
     images = []
     for activity in best_activities:
         images.append(create_trip_images(activity))
-    print(images)
-    
+    return {"plan": daily_plan, "images": images}
+
+
+# FastAPI setup
+app = FastAPI()
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins
+    allow_credentials=True,
+    # Allows all methods, including GET, POST, PUT, DELETE, etc.
+    allow_methods=["*"],
+    allow_headers=["*"],  # Allows all headers
+)
+
+# FastAPI routes
+@app.get("/top-5-options")
+def get_destinations_info_route(start_date: str, end_date: str, budget: int, trip_type: str):
+    try:
+        return get_destinations_info(start_date, end_date, budget, trip_type)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/daily-plan-and-images")
+def get_plan_and_images_route(destination: str, trip_type: str, start_date: str, end_date: str):
+    try:
+        return get_plan_and_images(destination, trip_type, start_date, end_date)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 if __name__ == "__main__":
-    result = print_for_each_flight()
+    #result = print_for_each_flight()
     #result = search_flights("d", "2024-07-21", "2024-07-27")
     # Ensure the file path is in the current directory
     
@@ -373,3 +405,4 @@ if __name__ == "__main__":
     #for hotel in hotels:
     #    print(json.dumps(hotel, indent=2))
     #print("\n")
+    pass
