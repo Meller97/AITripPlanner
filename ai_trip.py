@@ -336,18 +336,21 @@ def get_destinations_info(start_date: str, end_date: str, budget: int, trip_type
                 print("not enough budget")
                 continue
             destinations_info[dest] = {
-                "departures flight" : departures_flight_data,
-                "arrival flight" : arrival_flight_data,
-                "flights coast" : flights_coast,
+                "departures_flight" : cheapest_departure["flights"],
+                "arrival_flight" : cheapest_arrival["flights"],
+                "flights_coast" : flights_coast,
                 "hotel" : best_hotel,
-                "hotel coast" : best_hotel["price"],
-                "total coast" : flights_coast +best_hotel["price"]
+                "hotel_coast" : best_hotel["price"],
+                "total_coast" : flights_coast +best_hotel["price"]
             }
         else:
             print("not good")
     
     return destinations_info
     #chosen_destination, chosen_destination_info = display_and_choose_destinations(destinations_info)
+
+def dest_info_to_string(destination_info):
+    pass
 
 def get_plan_and_images(destination, trip_type, start_date, end_date):
     daily_plan = generate_daily_plan(destination, trip_type, start_date, end_date)
@@ -406,3 +409,4 @@ if __name__ == "__main__":
     #    print(json.dumps(hotel, indent=2))
     #print("\n")
     pass
+    #print(get_destinations_info("2024-07-21", "2024-07-27", 10000, "beach"))
