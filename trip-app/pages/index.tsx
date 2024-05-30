@@ -48,10 +48,10 @@ interface HotelData {
 interface DestinationInfo {
   "departures flight"?: FlightData[];
   "arrival flight"?: FlightData[];
-  flights_cost: number;
+  flights_coast: number;
   hotel: HotelData;
-  hotel_cost: number;
-  total_cost: number;
+  hotel_coast: number;
+  total_coast: number;
 }
 
 interface DestinationOption {
@@ -69,6 +69,8 @@ export default function Home() {
     tripType: ""
   });
 
+  const [plan, setPlan] = useState<string>('');
+  const [images, setImages] = useState<string[]>([]);
   const [topOptions, setTopOptions] = useState<DestinationOption[]>([]);
   const [selectedDestination, setSelectedDestination] = useState("");
   const [planAndImages, setPlanAndImages] = useState<any>(null);
@@ -121,7 +123,9 @@ export default function Home() {
           end_date: formData.endDate
         }
       });
-      setPlanAndImages(planAndImagesResponse.data);
+      const { plan, images } = planAndImagesResponse.data;
+      setPlan(typeof plan === 'string' ? plan : '');
+      setImages(images);
     } catch (error) {
       console.error("There was an error fetching the plan and images!", error);
     }
@@ -191,8 +195,8 @@ export default function Home() {
                     <td>
                       <details>
                         <summary>View Flights</summary>
-                        <p><strong>Departure_Flights:</strong></p>
-                        {option.info.departures_flight.map((flight, i) => (
+                        <p><strong>Departure Flights:</strong></p>
+                        {option.info["departures flight"]?.map((flight, i) => (
                           <div key={i}>
                             <p>Flight Number: {flight.flight_number} ({flight.airline})</p>
                             <p>Departure: {flight.departure_airport.name} ({flight.departure_airport.id}) at {flight.departure_airport.time}</p>
@@ -202,8 +206,8 @@ export default function Home() {
                             <p>Extensions: {flight.extensions.join(", ")}</p>
                           </div>
                         ))}
-                        <p><strong>Return_Flights:</strong></p>
-                        {option.info.arrival_flight.map((flight, i) => (
+                        <p><strong>Return Flights:</strong></p>
+                        {option.info["arrival flight"]?.map((flight, i) => (
                           <div key={i}>
                             <p>Flight Number: {flight.flight_number} ({flight.airline})</p>
                             <p>Departure: {flight.departure_airport.name} ({flight.departure_airport.id}) at {flight.departure_airport.time}</p>
@@ -227,12 +231,30 @@ export default function Home() {
                         <a href={option.info.hotel.link} target="_blank" rel="noopener noreferrer">More details</a>
                       </details>
                     </td>
-                    <td>${option.info.total_cost}</td>
+                    <td>${option.info.total_coast}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
             <button onClick={fetchPlanAndImages}>Get Plan and Images</button>
+          </div>
+        )}
+
+        {plan && (
+          <div className={styles.plan}>
+            <h2>Daily Plan</h2>
+            <p>{plan}</p>
+          </div>
+        )}
+        
+        {images.length > 0 && (
+          <div className={styles.images}>
+            <h2>Images</h2>
+            <div className={styles.imageGallery}>
+              {images.map((image, index) => (
+                <img key={index} src={image} alt={`Plan Image ${index + 1}`} className={styles.image} />
+              ))}
+            </div>
           </div>
         )}
       </main>
