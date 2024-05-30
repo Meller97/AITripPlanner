@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import re
 import json
 import os
+import unicodedata
 
 
 # Load the CSV file
@@ -21,7 +22,7 @@ CLIENT = openai.OpenAI(
     )
 
 #serpapi API key
-serpapi_api_key = "4855a30cc64d8fac37a10cb9c506083dfc5c07d4b4e62f4af01158fe61336ac9"
+serpapi_api_key = "95701e8c9048de5c246a437cce8c642234778be246c8cff722575e60800fc8d8"
 
 def read_csv_and_select_columns():
     # Convert the selected columns DataFrame to a string (for prompt)
@@ -36,17 +37,31 @@ def get_user_input():
     trip_type = input("Enter the type of trip (ski/beach/city):").lower()
     return start_date, end_date, budget, trip_type
 
+def normalize_name(str: str) -> str:
+    return unicodedata.normalize('NFKD', str).encode('ascii', 'ignore').decode('utf-8')  # nopep8
+
 def get_month_from_date(date_str):
     date_obj = datetime.strptime(date_str, "%Y-%m-%d")
     return date_obj.strftime("%B")
 
 # Function to find airport code by city name
-def get_airport_code_by_city(airport_name):
-    result = df[df['Airport Name'].str.contains(airport_name, case=False, na=False)]['Airport Code']
-    if not result.empty:
-        return result.values[0]
-    else:
-        return "City not found"
+def get_airport_code_by_city(city_name, country_name):
+    with open(json_file_path, 'r') as file:
+        airport_codes = json.load(file)
+    
+    city_normalized = city_name.lower().strip()
+    country_normalized = country_name.lower().strip()
+
+    for airport in airport_codes:
+        airport_city = airport['city_name'].lower().strip()
+        airport_country = airport['country_name'].lower().strip()
+        airport_name = airport['airport_name'].lower().strip()
+        airport_country_code = airport['country_code'].lower().strip()
+        
+        if ((city_normalized in airport_city or airport_city in city_normalized or city_normalized in airport_name) and
+            (country_normalized in airport_country or airport_country in country_normalized or country_normalized in airport_country_code or airport_country_code in country_normalized)):
+            return airport['column_1']
+    return ''
 
 def upload_file_to_open_ai(file_path: str) -> str:
     response = CLIENT.files.create(file=open(file_path, 'rb'), purpose='assistants')
@@ -79,27 +94,33 @@ def get_possible_destinations_fake(trip_type, month):
 
 
 def get_possible_destinations(trip_type, month):
-    selected_lines = read_csv_and_select_columns()
+    prompt = f"""Suggest a list of 10 possible travel destinations in the world for a
+        {trip_type} trip in {month} month. 
+        For each destination, i want you to give me the destination, the closest city with airport and the country of the city
+        you have to return the response in the following structure and not includ any addition data:"
+        "<possible travel destination>,<nearest city with airport>,<country>\n"
+        "<possible travel destination>,<nearest city with airport>,<country>\n"
+        "<possible travel destination>,<nearest city with airport>,<country>\n"
+        "<possible travel destination>,<nearest city with airport>,<country>\n"
+        "<possible travel destination>,<nearest city with airport>,<country>\n"
+        "example for one line: Herzeliya, Tel Aviv, Israel"""
+
     file_id = upload_file_to_open_ai(json_file_path)
-    prompt = (
-    f"The file {file_id} is a jason file containing places in the world and their corresponding airports and another filed abut the airport"
-        "Suggest 5 possible travel destinations in the world for a "
-        f"{trip_type} trip in {month}. For each destination, i want you to give me the closest airport name and code that is on the file {file_id}(names and code are in the file), you have to return the response in the following structure:"
-        "<possible travel destination>,<closest airport name>,<closest airport code>\n"
-        "<possible travel destination>,<closest airport name>,<closest airport code>\n"
-        "<possible travel destination>,<closest airport name>,<closest airport code>\n"
-        "<possible travel destination>,<closest airport name>,<closest airport code>\n"
-        "<possible travel destination>,<closest airport name>,<closest airport code>\n"
-        "example for one line: Tel Aviv,Ben Gurion Intl,TLV"
-)
+
+    prompt += f"""\nHere is the file ID for the airport codes of cities worldwide: {file_id}.
+    Utilize this file to accurately identify the nearest city with an airport for each destination.
+    Ensure that you do not provide a city and country combination that lacks an airport or does not exist in the file.
+    Additionally, use this file to verify and provide the correct country name for each destination.
+    if you can't use file do not mention that in at all i just want you to give me the list, use my tamplate exectly(without any numbers of line)"""
+
     role = "You are an experienced worldwide vacation planner. Additionally you are familiar with airports around the world."
     response = get_promt(prompt, role)
     
     # Split the response into lines and create a dictionary
     destinations_dict = {}
     for line in response.split('\n'):
-        travel_destination, closest_airport_name, closest_airport_code = line.split(', ')
-        destinations_dict[travel_destination] = closest_airport_code
+        travel_destination, nearest_city_with_airport, country = line.split(',')
+        destinations_dict[travel_destination] = get_airport_code_by_city(normalize_name(nearest_city_with_airport), normalize_name(country))
     
     return destinations_dict
 
@@ -112,7 +133,7 @@ def search_flights(destination, origin, start_date, end_date):
   "return_date": end_date,
   "currency": "USD",
   "hl": "en",
-  "api_key": "4855a30cc64d8fac37a10cb9c506083dfc5c07d4b4e62f4af01158fe61336ac9"
+  "api_key": "95701e8c9048de5c246a437cce8c642234778be246c8cff722575e60800fc8d8"
 }
 
     try:
@@ -308,7 +329,7 @@ def get_destinations_info(start_date: str, end_date: str, budget: int, trip_type
     #get user input
     month = get_month_from_date(start_date)
     #return dictonary contain for each contry the airport code
-    destination_airport_dict = get_possible_destinations_fake(trip_type, month)
+    destination_airport_dict = get_possible_destinations(trip_type, month)
     #iterate over each destenation and get the cheapest flight
     for dest in destination_airport_dict:
         if destination_airport_dict[dest] != "City not found":
@@ -336,12 +357,12 @@ def get_destinations_info(start_date: str, end_date: str, budget: int, trip_type
                 print("not enough budget")
                 continue
             destinations_info[dest] = {
-                "departures_flight" : cheapest_departure["flights"],
-                "arrival_flight" : cheapest_arrival["flights"],
-                "flights_coast" : flights_coast,
+                "departures flight" : cheapest_departure["flights"],
+                "arrival flight" : cheapest_arrival["flights"],
+                "flights coast" : flights_coast,
                 "hotel" : best_hotel,
-                "hotel_coast" : best_hotel["price"],
-                "total_coast" : flights_coast +best_hotel["price"]
+                "hotel coast" : best_hotel["price"],
+                "total coast" : flights_coast +best_hotel["price"]
             }
         else:
             print("not good")

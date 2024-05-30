@@ -51,7 +51,7 @@ interface DestinationInfo {
   flights_coast: number;
   hotel: HotelData;
   hotel_coast: number;
-  total_coast: number;
+  "total coast": number;
 }
 
 interface DestinationOption {
@@ -203,20 +203,20 @@ export default function Home() {
                             <p>Arrival: {flight.arrival_airport.name} ({flight.arrival_airport.id}) at {flight.arrival_airport.time}</p>
                             <p>Duration: {flight.duration} minutes</p>
                             <p>Class: {flight.travel_class}, Legroom: {flight.legroom}</p>
-                            <p>Extensions: {flight.extensions.join(", ")}</p>
+                            <p>Extensions: {Array.isArray(flight.extensions) ? flight.extensions.join(", ") : "None"}</p>
                           </div>
-                        ))}
-                        <p><strong>Return Flights:</strong></p>
-                        {option.info["arrival flight"]?.map((flight, i) => (
-                          <div key={i}>
-                            <p>Flight Number: {flight.flight_number} ({flight.airline})</p>
-                            <p>Departure: {flight.departure_airport.name} ({flight.departure_airport.id}) at {flight.departure_airport.time}</p>
-                            <p>Arrival: {flight.arrival_airport.name} ({flight.arrival_airport.id}) at {flight.arrival_airport.time}</p>
-                            <p>Duration: {flight.duration} minutes</p>
-                            <p>Class: {flight.travel_class}, Legroom: {flight.legroom}</p>
-                            <p>Extensions: {flight.extensions.join(", ")}</p>
-                          </div>
-                        ))}
+                      ))}
+                      <p><strong>Return Flights:</strong></p>
+                      {option.info["arrival flight"]?.map((flight, i) => (
+                        <div key={i}>
+                          <p>Flight Number: {flight.flight_number} ({flight.airline})</p>
+                          <p>Departure: {flight.departure_airport.name} ({flight.departure_airport.id}) at {flight.departure_airport.time}</p>
+                          <p>Arrival: {flight.arrival_airport.name} ({flight.arrival_airport.id}) at {flight.arrival_airport.time}</p>
+                          <p>Duration: {flight.duration} minutes</p>
+                          <p>Class: {flight.travel_class}, Legroom: {flight.legroom}</p>
+                          <p>Extensions: {Array.isArray(flight.extensions) ? flight.extensions.join(", ") : "None"}</p>
+                        </div>
+                      ))}
                       </details>
                     </td>
                     <td>
@@ -231,7 +231,7 @@ export default function Home() {
                         <a href={option.info.hotel.link} target="_blank" rel="noopener noreferrer">More details</a>
                       </details>
                     </td>
-                    <td>${option.info.total_coast}</td>
+                    <td>${option.info["total coast"]}</td>
                   </tr>
                 ))}
               </tbody>
