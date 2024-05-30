@@ -10,8 +10,6 @@ import os
 import unicodedata
 
 
-# Load the CSV file
-df = pd.read_csv('airports-code@public.csv', on_bad_lines='skip', delimiter=';',usecols=["Airport Code", "Airport Name", "City Name"])
 
 #file in json format
 json_file_path = 'airports-code@public.json'
@@ -24,11 +22,6 @@ CLIENT = openai.OpenAI(
 #serpapi API key
 serpapi_api_key = "95701e8c9048de5c246a437cce8c642234778be246c8cff722575e60800fc8d8"
 
-def read_csv_and_select_columns():
-    # Convert the selected columns DataFrame to a string (for prompt)
-    selected_lines = df.to_string(index=False)
-    
-    return selected_lines
 
 def get_user_input():
     start_date = input("Enter the start date of your trip (YYYY-MM-DD):")
@@ -82,15 +75,6 @@ def get_promt(prompt, role):
     except Exception as e:
         print(f"An error occurred: {e}")
         return None
-
-def get_possible_destinations_fake(trip_type, month):
-    response =  "New York, John F Kennedy Intl, JFK\nNegril, Negril, NEG\nPatong Beach, Patong Beach, PBS\nPompano Beach, Pompano Beach, PPM\nMyrtle Beach, Myrtle Beach Afb, MYR"
-    destinations_dict = {}
-    for line in response.split('\n'):
-        travel_destination, closest_airport_name, closest_airport_code = line.split(', ')
-        destinations_dict[travel_destination] = closest_airport_code
-    
-    return destinations_dict
 
 
 def get_possible_destinations(trip_type, month):
@@ -410,24 +394,3 @@ def get_plan_and_images_route(destination: str, trip_type: str, start_date: str,
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
-if __name__ == "__main__":
-    #result = print_for_each_flight()
-    #result = search_flights("d", "2024-07-21", "2024-07-27")
-    # Ensure the file path is in the current directory
-    
-    #current_directory = os.getcwd()
-    #file_path = os.path.join(current_directory, "flight_results.json")
-        
-    # Write the response data to the file
-    #with open(file_path, 'w') as file:
-    #    json.dump(result, file, indent=4)
-    #print(df.columns)
-
-    #hotels = fetch_hotels("New York", "2024-07-21", "2024-07-27")
-    #print("Hotels in Ney York:")
-    #for hotel in hotels:
-    #    print(json.dumps(hotel, indent=2))
-    #print("\n")
-    pass
-    #print(get_destinations_info("2024-07-21", "2024-07-27", 10000, "beach"))
